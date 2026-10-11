@@ -4,29 +4,62 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 
-SCRIPT_API = Path("/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting")
-SCRIPT_LIB = Path("/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/Libraries/Fusion/fusionscript.so")
+def _resolve_paths() -> tuple[Path, Path, Path]:
+    if sys.platform == "win32":
+        script_api = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / (
+            "Blackmagic Design/DaVinci Resolve/Support/Developer/Scripting"
+        )
+        script_lib = Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / (
+            "Blackmagic Design/DaVinci Resolve/fusionscript.dll"
+        )
+        user_scripts = Path(os.environ.get("APPDATA", str(Path.home() / "AppData/Roaming"))) / (
+            "Blackmagic Design/DaVinci Resolve/Support/Fusion/Scripts"
+        )
+    elif sys.platform == "darwin":
+        script_api = Path("/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting")
+        script_lib = Path(
+            "/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/Libraries/Fusion/fusionscript.so"
+        )
+        user_scripts = Path.home() / "Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Scripts"
+    else:
+        script_api = Path("/opt/resolve/Developer/Scripting")
+        script_lib = Path("/opt/resolve/libs/Fusion/fusionscript.so")
+        user_scripts = Path.home() / ".local/share/DaVinciResolve/Fusion/Scripts"
+    return script_api, script_lib, user_scripts
+
+
+_DEFAULT_SCRIPT_API, _DEFAULT_SCRIPT_LIB, USER_SCRIPTS = _resolve_paths()
+SCRIPT_API = Path(os.environ.get("RESOLVE_SCRIPT_API", str(_DEFAULT_SCRIPT_API))).expanduser()
+SCRIPT_LIB = Path(os.environ.get("RESOLVE_SCRIPT_LIB", str(_DEFAULT_SCRIPT_LIB))).expanduser()
 MODULES = SCRIPT_API / "Modules"
-USER_SCRIPTS = Path.home() / "Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Scripts"
-DEFAULT_FPS = 24
+DEFAULT_FPS = 24.0
 
 
 def configure_env() -> None:
     os.environ.setdefault("RESOLVE_SCRIPT_API", str(SCRIPT_API))
     os.environ.setdefault("RESOLVE_SCRIPT_LIB", str(SCRIPT_LIB))
     if str(MODULES) not in sys.path:
-        sys.path.append(str(MODULES))
+        sys.path.insert(0, str(MODULES))
 
 
-def get_resolve():
+def get_resolve() -> Any:
     configure_env()
-    import DaVinciResolveScript as dvr  # type: ignore
+    try:
+        import DaVinciResolveScript as dvr  # type: ignore
+    except ImportError as exc:
+        raise RuntimeError(
+            "Could not import DaVinciResolveScript. "
+            f"Expected module under {MODULES}; set RESOLVE_SCRIPT_API and "
+            "RESOLVE_SCRIPT_LIB to match the installed Resolve SDK."
+        ) from exc
 
     resolve = dvr.scriptapp("Resolve")
     if not resolve:
@@ -53,35 +86,81 @@ def get_or_create_bin(media_pool, parent, name: str):
     return media_pool.AddSubFolder(parent, name)
 
 
-def seconds(value: float, fps: int = DEFAULT_FPS) -> int:
+def append_to_timeline(media_pool, clip_infos: list[dict[str, Any]]) -> list[Any]:
+    items = media_pool.AppendToTimeline(clip_infos)
+    if not items or len(items) != len(clip_infos):
+        raise RuntimeError(
+            f"Resolve appended {len(items or [])} of {len(clip_infos)} requested timeline items."
+        )
+    return items
+
+
+def seconds(value: float, fps: float = DEFAULT_FPS) -> int:
     return int(round(value * fps))
 
 
 def json_dump(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def ffprobe_duration(path: Path) -> float | None:
-    try:
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                str(path),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return float(result.stdout.strip())
-    except Exception:
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        raise RuntimeError("ffprobe is required to determine source duration; install FFmpeg and retry.")
+    result = subprocess.run(
+        [
+            ffprobe,
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    duration = result.stdout.strip()
+    if not duration:
         return None
+    return float(duration)
+
+
+def ffprobe_video_fps(path: Path) -> float:
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        raise RuntimeError("ffprobe is required to read source frame rate; install FFmpeg and retry.")
+    result = subprocess.run(
+        [
+            ffprobe,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=avg_frame_rate,r_frame_rate",
+            "-of",
+            "json",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    streams = payload.get("streams", [])
+    if not streams:
+        raise RuntimeError(f"No video stream found in {path}.")
+    for key in ("avg_frame_rate", "r_frame_rate"):
+        value = streams[0].get(key)
+        if value:
+            rate = float(Fraction(value))
+            if rate > 0:
+                return rate
+    raise RuntimeError(f"Could not read a valid video frame rate from {path}.")
 
 
 def media_files(folder: Path) -> list[Path]:

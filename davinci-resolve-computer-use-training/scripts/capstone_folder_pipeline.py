@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 from resolve_common import json_dump
@@ -17,7 +18,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("folder", type=Path)
-    parser.add_argument("--project", default="Codex ChaiWithJai Capstone")
+    parser.add_argument("--project", default="Resolve Kit ChaiWithJai Capstone")
     parser.add_argument("--status-dir", type=Path, default=Path(os.environ.get("RESOLVE_KIT_STATUS_DIR", "resolve_kit/status")))
     parser.add_argument("--replace", action="store_true")
     return parser.parse_args()
@@ -38,7 +39,7 @@ def main() -> int:
         timeline = f"{folder.name} - {label}"
         report = args.status_dir / f"{slug}_{label}_stage.json"
         cmd = [
-            "python3",
+            sys.executable,
             str(SCRIPT_DIR / "stage_folder_timeline.py"),
             str(folder),
             "--project",
@@ -57,7 +58,7 @@ def main() -> int:
         validation = args.status_dir / f"{slug}_{label}_validation.json"
         run(
             [
-                "python3",
+                sys.executable,
                 str(SCRIPT_DIR / "validate_timeline.py"),
                 "--project",
                 args.project,

@@ -17,7 +17,17 @@ Default to the official Python/Lua scripting API for repeatable operations:
 - render queue setup and render status polling
 - project export/archive
 
-Local SDK paths on macOS:
+The included helpers derive default SDK paths per platform; override these
+environment variables for custom installations.
+
+Windows defaults:
+
+```text
+RESOLVE_SCRIPT_API=%PROGRAMDATA%\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting
+RESOLVE_SCRIPT_LIB=%PROGRAMFILES%\Blackmagic Design\DaVinci Resolve\fusionscript.dll
+```
+
+macOS defaults:
 
 ```bash
 RESOLVE_SCRIPT_API="/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting"
@@ -25,22 +35,52 @@ RESOLVE_SCRIPT_LIB="/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/L
 PYTHONPATH="$PYTHONPATH:$RESOLVE_SCRIPT_API/Modules/"
 ```
 
-The official SDK README and examples are installed at:
+Linux defaults:
+
+```bash
+RESOLVE_SCRIPT_API="/opt/resolve/Developer/Scripting"
+RESOLVE_SCRIPT_LIB="/opt/resolve/libs/Fusion/fusionscript.so"
+```
+
+The SDK README and examples are installed with Resolve. On Windows:
+
+```text
+%PROGRAMDATA%\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting
+```
+
+On macOS:
 
 - `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/README.txt`
 - `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Examples`
 - `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules/DaVinciResolveScript.py`
 
-Resolve must be running unless deliberately launched in `-nogui` mode. For normal HITL editing, keep the UI running.
+On Linux, the helper defaults and sample script locations are:
+
+```text
+/opt/resolve/Developer/Scripting/README.txt
+/opt/resolve/Developer/Scripting/Examples
+/opt/resolve/Developer/Scripting/Modules/DaVinciResolveScript.py
+~/.local/share/DaVinciResolve/Fusion/Scripts
+```
+
+Resolve must be running unless deliberately launched in `-nogui` mode. For normal HITL editing, keep the UI running. Enable external scripting using local access in Resolve Preferences.
 
 ## 2. Installed Workspace Scripts
 
 For actions the user may invoke manually, install scripts into Resolve's Workspace > Scripts menu.
 
+Windows location:
+
+- Current user: `%APPDATA%\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts`
+
 macOS locations:
 
 - All users: `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Scripts`
 - Current user: `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Scripts`
+
+Linux location:
+
+- Current user: `~/.local/share/DaVinciResolve/Fusion/Scripts`
 
 Use subfolders by surface:
 

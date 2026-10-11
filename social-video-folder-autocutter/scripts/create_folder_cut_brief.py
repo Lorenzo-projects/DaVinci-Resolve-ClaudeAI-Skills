@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -46,7 +47,7 @@ def main() -> None:
     audio_path = out.parent / "audio_quality_audit.json"
 
     manifest = run_json([
-        "python3",
+        sys.executable,
         str(DAVINCI_SKILL / "scripts" / "probe_media.py"),
         str(project),
         "--out",
@@ -62,7 +63,7 @@ def main() -> None:
     audio_inputs = args.audio_path or default_audio_paths or [str(project)]
 
     audio = run_json([
-        "python3",
+        sys.executable,
         str(DAVINCI_SKILL / "scripts" / "audio_quality_audit.py"),
         *audio_inputs,
         "--out",

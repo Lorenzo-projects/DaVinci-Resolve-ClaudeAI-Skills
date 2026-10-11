@@ -1,16 +1,43 @@
 #!/usr/bin/env python3
-"""Check DaVinci Resolve automation readiness for Codex skills."""
+"""Check DaVinci Resolve automation readiness for Resolve Kit skills."""
 
 from __future__ import annotations
 
+import csv
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 from resolve_common import MODULES, SCRIPT_API, SCRIPT_LIB, USER_SCRIPTS, get_resolve
 
 
 def process_rows() -> list[dict[str, str]]:
+    if sys.platform == "win32":
+        result = subprocess.run(
+            ["tasklist", "/FO", "CSV", "/NH"],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        rows = []
+        for process_name, pid, *_ in csv.reader(result.stdout.splitlines()):
+            if process_name.lower() in {"resolve.exe", "fuscript.exe"}:
+                rows.append(
+                    {
+                        "pid": pid,
+                        "ppid": "unavailable",
+                        "stat": "running",
+                        "etime": "unavailable",
+                        "cpu_percent": "unavailable",
+                        "mem_percent": "unavailable",
+                        "rss_kb": "unavailable",
+                        "command": process_name,
+                    }
+                )
+        return rows
+
     result = subprocess.run(
         ["ps", "-axo", "pid,ppid,stat,etime,%cpu,%mem,rss,command"],
         check=True,

@@ -13,8 +13,13 @@ from pathlib import Path
 def parse_srt_time(value: str) -> str:
     hh, mm, rest = value.strip().split(":")
     ss, ms = rest.split(",")
-    centiseconds = int(round(int(ms) / 10))
-    return f"{int(hh)}:{int(mm):02d}:{int(ss):02d}.{centiseconds:02d}"
+    total_centiseconds = ((int(hh) * 3600 + int(mm) * 60 + int(ss)) * 100) + int(
+        round(int(ms) / 10)
+    )
+    total_seconds, centiseconds = divmod(total_centiseconds, 100)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d}.{centiseconds:02d}"
 
 
 def wrap_caption(text: str, limit: int = 34) -> str:
@@ -23,14 +28,14 @@ def wrap_caption(text: str, limit: int = 34) -> str:
     current: list[str] = []
     for word in words:
         candidate = " ".join(current + [word])
-        if current and len(candidate) > limit and len(lines) < 1:
+        if current and len(candidate) > limit:
             lines.append(" ".join(current))
             current = [word]
         else:
             current.append(word)
     if current:
         lines.append(" ".join(current))
-    return r"\N".join(lines[:2])
+    return r"\N".join(lines)
 
 
 def srt_to_events(srt_text: str) -> list[tuple[str, str, str]]:
@@ -42,16 +47,20 @@ def srt_to_events(srt_text: str) -> list[tuple[str, str, str]]:
         if not timing:
             continue
         start_raw, end_raw = [part.strip().split()[0] for part in timing.split("-->")]
+        start = parse_srt_time(start_raw)
+        end = parse_srt_time(end_raw)
+        if end <= start:
+            raise ValueError(f"Subtitle end time must be after start time: {timing}")
         text_lines = lines[lines.index(timing) + 1 :]
         text = html.unescape(" ".join(text_lines))
         text = re.sub(r"\s+", " ", text).strip()
         if text:
-            events.append((parse_srt_time(start_raw), parse_srt_time(end_raw), wrap_caption(text)))
+            events.append((start, end, wrap_caption(text)))
     return events
 
 
 def write_ass(srt_path: Path, ass_path: Path) -> None:
-    events = srt_to_events(srt_path.read_text(errors="replace"))
+    events = srt_to_events(srt_path.read_text(encoding="utf-8-sig", errors="replace"))
     header = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -67,15 +76,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = [header]
     for start, end, text in events:
-        safe_text = text.replace("{", "").replace("}", "")
+        safe_text = r"\N".join(
+            line.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}")
+            for line in text.split(r"\N")
+        )
         lines.append(f"Dialogue: 0,{start},{end},Netflix,,0,0,0,,{safe_text}\n")
     ass_path.parent.mkdir(parents=True, exist_ok=True)
-    ass_path.write_text("".join(lines))
+    ass_path.write_text("".join(lines), encoding="utf-8")
 
 
 def burn(video: Path, ass_path: Path, out: Path) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
-    ass_filter = str(ass_path).replace("\\", "\\\\").replace(":", "\\:")
+    ass_filter = str(ass_path.resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
     cmd = [
         "ffmpeg",
         "-y",

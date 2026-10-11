@@ -1,5 +1,8 @@
 # Resolve 20 Homework Map
 
+Historical lesson mapping for the Resolve 20 workbook; it is learning/source
+material, not a Resolve 21 API compatibility certification.
+
 Ground truth PDFs are local under the configured local workbook download directory, such as `~/Downloads/`. The repo wikis are fast summaries; use the PDFs when UI behavior or page ranges matter.
 
 ## Beginner's Guide

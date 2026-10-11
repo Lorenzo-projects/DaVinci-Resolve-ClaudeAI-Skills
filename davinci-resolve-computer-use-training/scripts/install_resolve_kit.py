@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install Codex Resolve helper scripts into Resolve's Workspace > Scripts menu."""
+"""Install Resolve Kit helper scripts into Resolve's Workspace > Scripts menu."""
 
 from __future__ import annotations
 
@@ -11,12 +11,12 @@ from resolve_common import USER_SCRIPTS
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
 SCRIPT_DIR = SKILL_DIR / "scripts"
-TARGET_DIR = USER_SCRIPTS / "Utility" / "Codex"
+TARGET_DIR = USER_SCRIPTS / "Utility" / "Resolve Kit"
 
 MENU_SCRIPTS = {
-    "Codex Resolve Doctor.py": SCRIPT_DIR / "resolve_doctor.py",
-    "Codex Stage Folder Timeline.py": SCRIPT_DIR / "stage_folder_timeline.py",
-    "Codex Validate Timeline.py": SCRIPT_DIR / "validate_timeline.py",
+    "Resolve Kit Doctor.py": SCRIPT_DIR / "resolve_doctor.py",
+    "Resolve Kit Stage Folder Timeline.py": SCRIPT_DIR / "stage_folder_timeline.py",
+    "Resolve Kit Validate Timeline.py": SCRIPT_DIR / "validate_timeline.py",
 }
 
 

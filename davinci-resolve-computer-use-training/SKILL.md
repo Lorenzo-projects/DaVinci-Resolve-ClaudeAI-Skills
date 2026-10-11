@@ -1,6 +1,6 @@
 ---
 name: davinci-resolve-computer-use-training
-description: Use when the user wants Codex to learn DaVinci Resolve through Blackmagic Design lesson homework, operate the Resolve UI with Computer Use, validate skills against real Resolve behavior, or build a capstone workflow that turns local/T7 media into Instagram and YouTube cuts.
+description: Use when the user wants an AI assistant to learn DaVinci Resolve through Blackmagic Design lesson homework, operate the Resolve UI with Computer Use, validate skills against real Resolve behavior, or build a capstone workflow that turns local/T7 media into Instagram and YouTube cuts.
 ---
 
 # DaVinci Resolve Computer Use Training
@@ -18,13 +18,11 @@ Default to DaVinci Resolve's supported scripting and preset systems before UI au
 
 Before any lesson or production edit, run or emulate `scripts/resolve_doctor.py` to confirm process state, scripting paths, Resolve version, current project/timeline, current page, database, and timeline start frame.
 
-Use `bin/resolve-kit` for repeatable local execution:
+Use the platform launcher for repeatable local execution:
 
-- `resolve-kit doctor`
-- `resolve-kit install`
-- `resolve-kit stage-folder <folder>`
-- `resolve-kit validate --project <name> --timeline <name>`
-- `resolve-kit capstone <folder>`
+- Windows: `.\bin\resolve-kit.cmd doctor` (or `install`, `stage-folder`,
+  `validate`, `capstone`, and `stage-decisions`).
+- macOS/Linux: `bin/resolve-kit doctor` (same commands).
 
 ## Core Loop
 
@@ -57,6 +55,14 @@ For every lesson:
 - Save through `ProjectManager.SaveProject()`.
 - Validate by reading the project/timeline back through the API after writing.
 - Never flatten the handoff unless the user asks for a flat render only; preserve layered tracks, markers, disabled repair/reference tracks, captions, and B-roll.
+- The bundled folder-timeline builder creates only a time-based seed; it does
+  not understand story or select useful B-roll. For a semantic cut, first
+  produce and review edit-decision JSON, then stage it with `stage-decisions`.
+- On Resolve 21, `davinci-resolve-social-editor/scripts/resolve_auto_captions.py`
+  can create editable native subtitle tracks from timeline audio. Requires a
+  compatible Resolve build/model/Extras; proofread text, timing, and safe areas
+  before delivery. It will refuse to add captions if the timeline already has
+  subtitle clips.
 
 ## Homework Card Schema
 

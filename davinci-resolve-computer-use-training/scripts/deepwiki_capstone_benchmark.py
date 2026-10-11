@@ -14,7 +14,7 @@ from resolve_common import get_resolve, json_dump, project_by_name, timeline_by_
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--project", default="Codex ChaiWithJai Capstone")
+    parser.add_argument("--project", default="Resolve Kit ChaiWithJai Capstone")
     parser.add_argument("--instagram", default="CAPSTONE Instagram Semantic Cut")
     parser.add_argument("--youtube", default="CAPSTONE YouTube Semantic Cut")
     parser.add_argument("--output-dir", type=Path, default=Path(os.environ.get("RESOLVE_KIT_STATUS_DIR", "resolve_kit/status")))

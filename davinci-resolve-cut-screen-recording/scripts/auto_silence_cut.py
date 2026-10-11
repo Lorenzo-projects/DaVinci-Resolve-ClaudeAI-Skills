@@ -8,16 +8,16 @@ This script is intentionally read-only. It does NOT delete clips. Use it to
 audit a timeline before you do destructive ripple-deletes by hand.
 
 Requirements:
-  - DaVinci Resolve 20 (free or Studio) running, with a project open
+  - DaVinci Resolve 21 (free or Studio) running, with a project open
   - External scripting enabled (Preferences > System > General > External
     scripting using = Local)
   - Python 3.9+
 
-Run from terminal (macOS example):
-  export RESOLVE_SCRIPT_API="/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting"
-  export RESOLVE_SCRIPT_LIB="/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/Libraries/Fusion/fusionscript.so"
-  export PYTHONPATH="$PYTHONPATH:$RESOLVE_SCRIPT_API/Modules/"
-  python3 auto_silence_cut.py
+Run from a terminal with Python on PATH:
+  python auto_silence_cut.py
+
+The adjacent resolve_scripting.py configures the default SDK path for each
+platform. Set RESOLVE_SCRIPT_API and RESOLVE_SCRIPT_LIB for custom installs.
 
 Or from inside Resolve:
   Workspace > Console > Py3, then File > Open and select this script.
@@ -36,29 +36,11 @@ API surface used (all documented in the Reference Manual / Developer/Scripting/R
 """
 
 import sys
+from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-def get_resolve():
-    """Attach to the running Resolve instance via the scripting bridge."""
-    try:
-        import DaVinciResolveScript as dvr_script
-    except ImportError:
-        print(
-            "ERROR: Could not import DaVinciResolveScript.\n"
-            "  - Make sure DaVinci Resolve is running.\n"
-            "  - Make sure External scripting is set to Local in\n"
-            "    Preferences > System > General.\n"
-            "  - Make sure RESOLVE_SCRIPT_API, RESOLVE_SCRIPT_LIB, and\n"
-            "    PYTHONPATH environment variables are set.\n"
-            "  - See README.md in the repo root for the exact paths.\n"
-        )
-        sys.exit(1)
-
-    resolve = dvr_script.scriptapp("Resolve")
-    if resolve is None:
-        print("ERROR: Could not connect to Resolve. Is a project open?")
-        sys.exit(1)
-    return resolve
+from resolve_scripting import get_resolve
 
 
 def frames_to_timecode(frames, fps):
@@ -75,7 +57,10 @@ def frames_to_timecode(frames, fps):
 
 
 def audit_timeline():
-    resolve = get_resolve()
+    try:
+        resolve = get_resolve()
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
     pm = resolve.GetProjectManager()
     project = pm.GetCurrentProject()
     if project is None:

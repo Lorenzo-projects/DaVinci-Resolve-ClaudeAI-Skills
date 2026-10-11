@@ -5,25 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import sys
 from pathlib import Path
 
-
-RESOLVE_MODULE = "/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules"
-
-
-def load_resolve():
-    if RESOLVE_MODULE not in sys.path:
-        sys.path.append(RESOLVE_MODULE)
-    try:
-        import DaVinciResolveScript as dvr  # type: ignore
-    except Exception as exc:
-        raise SystemExit(f"Could not import DaVinciResolveScript: {exc}")
-    resolve = dvr.scriptapp("Resolve")
-    if not resolve:
-        raise SystemExit("DaVinci Resolve scripting API did not return an app. Launch Resolve and retry.")
-    return resolve
+from resolve_scripting import get_resolve
 
 
 def tc_to_frames(tc: str, fps: float) -> int | None:
@@ -69,9 +53,16 @@ def frames_to_tc(frame: int, fps: float) -> str:
 
 def get_project(pm, name: str | None):
     if not name:
-        return pm.GetCurrentProject()
-    if pm.LoadProject(name):
-        return pm.GetCurrentProject()
+        project = pm.GetCurrentProject()
+        if project:
+            return project
+        raise SystemExit("No current Resolve project.")
+    current = pm.GetCurrentProject()
+    if current and current.GetName() == name:
+        return current
+    project = pm.LoadProject(name)
+    if project:
+        return project
     raise SystemExit(f"Could not load Resolve project: {name}")
 
 
@@ -84,13 +75,14 @@ def get_timeline(project, name: str | None):
     for idx in range(1, int(project.GetTimelineCount()) + 1):
         timeline = project.GetTimelineByIndex(idx)
         if timeline and timeline.GetName() == name:
-            project.SetCurrentTimeline(timeline)
+            if not project.SetCurrentTimeline(timeline):
+                raise SystemExit(f"Could not select Resolve timeline: {name}")
             return timeline
     raise SystemExit(f"Could not find timeline: {name}")
 
 
 def audit(project_name: str | None, timeline_name: str | None) -> dict:
-    resolve = load_resolve()
+    resolve = get_resolve()
     pm = resolve.GetProjectManager()
     project = get_project(pm, project_name)
     timeline = get_timeline(project, timeline_name)
@@ -110,7 +102,7 @@ def audit(project_name: str | None, timeline_name: str | None) -> dict:
     caption_like_items = 0
     video_items = 0
 
-    for media_type in ("video", "audio"):
+    for media_type in ("video", "audio", "subtitle"):
         count = int(timeline.GetTrackCount(media_type))
         for track_index in range(1, count + 1):
             items = [item_payload(item, fps) for item in timeline.GetItemListInTrack(media_type, track_index)]
@@ -126,6 +118,8 @@ def audit(project_name: str | None, timeline_name: str | None) -> dict:
                     max_video_end = item["end_frame"] if max_video_end is None else max(max_video_end, item["end_frame"])
                     if is_caption_like(item):
                         caption_like_items += 1
+                elif media_type == "subtitle":
+                    caption_like_items += 1
                 else:
                     max_audio_end = item["end_frame"] if max_audio_end is None else max(max_audio_end, item["end_frame"])
                     if item["enabled"]:
@@ -142,7 +136,7 @@ def audit(project_name: str | None, timeline_name: str | None) -> dict:
     if enabled_audio == 0:
         warnings.append("Timeline has no enabled audio items.")
     if caption_like_items == 0:
-        warnings.append("No caption/subtitle-like video items were found. Burned-in captions need a review render.")
+        warnings.append("No subtitle-track or caption-like video items were found.")
     if max_video_end and max_audio_end and max_audio_end - max_video_end > int(round(fps)):
         warnings.append("Audio extends more than one second past the video tail.")
     if current_frame is not None and max_video_end and not (start_frame <= current_frame <= max_video_end):
@@ -180,10 +174,10 @@ def main() -> None:
     if args.out:
         out = Path(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(payload + "\n")
+        out.write_text(payload + "\n", encoding="utf-8")
     print(payload)
     if result["warnings"]:
-        sys.exit(2)
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":

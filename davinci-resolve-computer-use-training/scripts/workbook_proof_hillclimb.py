@@ -11,14 +11,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
-SDK = "/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules"
-if SDK not in sys.path:
-    sys.path.append(SDK)
-
-import DaVinciResolveScript as dvr  # type: ignore
+from resolve_common import get_resolve
 
 
 ROOT = Path(os.environ.get("CAPSTONE_MEDIA_ROOT", ".")).expanduser().resolve()
@@ -58,9 +53,7 @@ def ensure_audio_assets() -> dict[str, Path]:
 
 
 def connect():
-    resolve = dvr.scriptapp("Resolve")
-    if not resolve:
-        raise RuntimeError("DaVinci Resolve scripting API is not available")
+    resolve = get_resolve()
     pm = resolve.GetProjectManager()
     project = pm.GetCurrentProject()
     if not project:
@@ -73,7 +66,7 @@ def import_media(resolve, paths: list[Path]) -> list:
     imported = []
     for path in paths:
         if path.exists():
-            result = storage.AddItemsToMediaPool(str(path))
+            result = storage.AddItemListToMediaPool([str(path)])
             if isinstance(result, dict):
                 imported.extend(result.values())
             elif result:
@@ -301,15 +294,15 @@ def summarize_timeline(tl) -> dict:
         "end_frame": tl.GetEndFrame(),
         "markers": len(tl.GetMarkers() or {}),
         "video_tracks": {
-            str(i): {"name": tl.GetTrackName("video", i), "items": len(tl.GetItemsInTrack("video", i) or {})}
+            str(i): {"name": tl.GetTrackName("video", i), "items": len(tl.GetItemListInTrack("video", i) or [])}
             for i in range(1, tl.GetTrackCount("video") + 1)
         },
         "audio_tracks": {
-            str(i): {"name": tl.GetTrackName("audio", i), "subtype": tl.GetTrackSubType("audio", i), "items": len(tl.GetItemsInTrack("audio", i) or {})}
+            str(i): {"name": tl.GetTrackName("audio", i), "subtype": tl.GetTrackSubType("audio", i), "items": len(tl.GetItemListInTrack("audio", i) or [])}
             for i in range(1, tl.GetTrackCount("audio") + 1)
         },
         "subtitle_tracks": {
-            str(i): {"name": tl.GetTrackName("subtitle", i), "items": len(tl.GetItemsInTrack("subtitle", i) or {})}
+            str(i): {"name": tl.GetTrackName("subtitle", i), "items": len(tl.GetItemListInTrack("subtitle", i) or [])}
             for i in range(1, tl.GetTrackCount("subtitle") + 1)
         },
     }

@@ -105,6 +105,14 @@ Never call the job done unless these artifacts exist:
 
 ## Useful Command
 
+Windows PowerShell:
+
+```powershell
+python .\scripts\create_folder_cut_brief.py C:\path\to\project-folder --out C:\path\to\project-folder\output\folder_cut_brief.json
+```
+
+macOS/Linux:
+
 ```bash
 python3 skills/social-video-folder-autocutter/scripts/create_folder_cut_brief.py \
   /path/to/project-folder --out /path/to/project-folder/output/folder_cut_brief.json

@@ -42,18 +42,27 @@ def video_stream(probe_json):
     return {}
 
 
-def warnings_for(probe_json, loudness):
+def warnings_for(probe_json, loudness, expected_size):
     warnings = []
     video = video_stream(probe_json)
     width = int(video.get("width") or 0)
     height = int(video.get("height") or 0)
-    if (width, height) != (1080, 1920):
-        warnings.append(f"Expected 1080x1920 vertical export, found {width}x{height}.")
+    if not video:
+        warnings.append("Render contains no video stream.")
+    elif (width, height) != expected_size:
+        warnings.append(f"Expected {expected_size[0]}x{expected_size[1]} export, found {width}x{height}.")
+    audio_streams = [stream for stream in probe_json.get("streams", []) if stream.get("codec_type") == "audio"]
+    if not audio_streams:
+        warnings.append("Render contains no audio stream.")
     integrated = loudness.get("integrated_lufs")
-    if integrated is not None and not (-16.5 <= integrated <= -13.5):
+    if integrated is None:
+        warnings.append("Could not measure integrated loudness.")
+    elif not (-16.5 <= integrated <= -13.5):
         warnings.append(f"Integrated loudness {integrated:.1f} LUFS is outside the -16 to -14 social target band.")
     true_peak = loudness.get("true_peak_dbfs")
-    if true_peak is not None and true_peak > -1.0:
+    if true_peak is None:
+        warnings.append("Could not measure true peak.")
+    elif true_peak > -1.0:
         warnings.append(f"True peak {true_peak:.1f} dBFS is hotter than the -1 dBTP target.")
     return warnings
 
@@ -63,6 +72,8 @@ def main():
     ap.add_argument("render")
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--timestamps", default="")
+    ap.add_argument("--width", type=int, default=1080, help="Expected output width (default: 1080).")
+    ap.add_argument("--height", type=int, default=1920, help="Expected output height (default: 1920).")
     args = ap.parse_args()
 
     render = Path(args.render).expanduser().resolve()
@@ -106,7 +117,7 @@ def main():
         "review_stills": stills,
         "loudness_log": str(out_dir / "loudness_ebur128.log"),
         "loudness": loudness,
-        "warnings": warnings_for(p, loudness),
+        "warnings": warnings_for(p, loudness, (args.width, args.height)),
     }
     report_path = out_dir / "verification_report.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")

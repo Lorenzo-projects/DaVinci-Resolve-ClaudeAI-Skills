@@ -64,7 +64,11 @@ Editor's Guide pp. 572-575 covers the Reference Point fallback when AI Smart Ref
 
 ### Phase 2 — Add captions with AI-generated subtitles
 
-Editor's Guide pp. 586-590 covers Create Subtitles from Audio.
+Editor's Guide pp. 586-590 covers Create Subtitles from Audio. In Resolve 21,
+you can also run `davinci-resolve-social-editor/scripts/resolve_auto_captions.py`
+to create the editable subtitle track through the supported scripting API
+(Resolve must be open with local scripting enabled). This is an optional
+automation of the same operation, not a substitute for reviewing captions.
 
 1. With your timeline open, choose **Timeline menu > AI Tools > Create Subtitles from Audio**.
 2. In the dialog:

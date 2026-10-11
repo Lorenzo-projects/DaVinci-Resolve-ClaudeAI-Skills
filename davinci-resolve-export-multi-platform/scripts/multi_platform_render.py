@@ -18,7 +18,7 @@ Required preset names (rename in PRESET_BY_ASPECT below if yours differ):
   - "DEVREL_SHORTS_1080"    for 9:16 (1080x1920)
 
 Requirements:
-  - DaVinci Resolve 20 (free or Studio) running with a project open.
+  - DaVinci Resolve 21 (free or Studio) running with a project open.
   - The three render presets above must already exist. Create them by
     following the steps in SKILL.md (Phase 3 — Build the three render
     presets).
@@ -26,11 +26,8 @@ Requirements:
     External scripting using = Local.
   - Python 3.9+.
 
-Run from terminal (macOS example):
-  export RESOLVE_SCRIPT_API="/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting"
-  export RESOLVE_SCRIPT_LIB="/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/Libraries/Fusion/fusionscript.so"
-  export PYTHONPATH="$PYTHONPATH:$RESOLVE_SCRIPT_API/Modules/"
-  python3 multi_platform_render.py
+The helper resolves the platform-specific SDK paths documented by Blackmagic.
+Set RESOLVE_SCRIPT_API and RESOLVE_SCRIPT_LIB manually only for custom installs.
 
 API surface used (all documented in Reference Manual and Developer/Scripting/README.txt):
   Resolve.GetProjectManager()
@@ -48,9 +45,12 @@ API surface used (all documented in Reference Manual and Developer/Scripting/REA
   Timeline.GetSetting(setting_name)
 """
 
-import os
+import argparse
 import sys
 import time
+from pathlib import Path
+
+from resolve_scripting import get_resolve as get_resolve_from_sdk
 
 
 # Map aspect ratio (width:height ratio rounded to 2 decimals) to preset name.
@@ -63,22 +63,9 @@ PRESET_BY_ASPECT = {
 
 def get_resolve():
     try:
-        import DaVinciResolveScript as dvr_script
-    except ImportError:
-        print(
-            "ERROR: Could not import DaVinciResolveScript.\n"
-            "  - DaVinci Resolve must be running.\n"
-            "  - External scripting must be set to Local.\n"
-            "  - RESOLVE_SCRIPT_API, RESOLVE_SCRIPT_LIB, and PYTHONPATH\n"
-            "    must be set. See README.md.\n"
-        )
-        sys.exit(1)
-
-    resolve = dvr_script.scriptapp("Resolve")
-    if resolve is None:
-        print("ERROR: Could not connect to Resolve. Is a project open?")
-        sys.exit(1)
-    return resolve
+        return get_resolve_from_sdk()
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def get_timeline_aspect(timeline):
@@ -138,57 +125,79 @@ def confirm(prompt):
 def queue_render_jobs(project, plan, output_dir):
     """Add a render job to the queue for each timeline in the plan."""
     queued = []
-    for timeline, preset, width, height in plan:
-        name = timeline.GetName()
-        print(f"\nQueueing: {name} ({width}x{height}) -> preset '{preset}'")
+    original_timeline = project.GetCurrentTimeline()
+    try:
+        for timeline, preset, width, height in plan:
+            name = timeline.GetName()
+            print(f"\nQueueing: {name} ({width}x{height}) -> preset '{preset}'")
 
-        if not project.SetCurrentTimeline(timeline):
-            print(f"  WARNING: Could not set current timeline to '{name}'")
-            continue
+            if not project.SetCurrentTimeline(timeline):
+                print(f"  WARNING: Could not set current timeline to '{name}'")
+                continue
 
-        if not project.LoadRenderPreset(preset):
-            print(
-                f"  WARNING: Could not load preset '{preset}'. Does it exist?\n"
-                f"           Create it via SKILL.md Phase 3 first."
-            )
-            continue
+            if not project.LoadRenderPreset(preset):
+                print(
+                    f"  WARNING: Could not load preset '{preset}'. Does it exist?\n"
+                    f"           Create it via SKILL.md Phase 3 first."
+                )
+                continue
 
-        # Override the output location so all renders land in the same folder.
-        # The preset's own file-name template (e.g. %timeline_name) is preserved.
-        settings = {
-            "TargetDir": output_dir,
-            # CustomName is optional — only set it if you want to override
-            # the preset's filename template:
-            # "CustomName": f"{name}_{preset}",
-        }
-        if not project.SetRenderSettings(settings):
-            print(f"  WARNING: Could not set render settings (TargetDir).")
-            continue
+            settings = {"TargetDir": str(output_dir)}
+            if not project.SetRenderSettings(settings):
+                print("  WARNING: Could not set render settings (TargetDir).")
+                continue
 
-        job_id = project.AddRenderJob()
-        if not job_id:
-            print(f"  WARNING: AddRenderJob() returned no id.")
-            continue
-        print(f"  Queued job id: {job_id}")
-        queued.append(job_id)
+            job_id = project.AddRenderJob()
+            if not job_id:
+                print("  WARNING: AddRenderJob() returned no id.")
+                continue
+            print(f"  Queued job id: {job_id}")
+            queued.append(job_id)
+    finally:
+        if original_timeline:
+            project.SetCurrentTimeline(original_timeline)
     return queued
 
 
-def render_all_and_wait(project):
+def render_all_and_wait(project, job_ids):
     """Start rendering and poll until the queue completes."""
-    if not project.StartRendering():
-        print("ERROR: StartRendering() returned False. Is anything queued?")
+    if not project.StartRendering(job_ids):
+        print("ERROR: StartRendering() returned False.")
         return False
 
-    print("\nRendering started. Polling every 5 seconds...")
+    print(f"\nRendering {len(job_ids)} requested jobs. Polling every 5 seconds...")
     while project.IsRenderingInProgress():
         time.sleep(5)
-        print("  ...still rendering")
-    print("Rendering complete.")
+        for job_id in job_ids:
+            status = project.GetRenderJobStatus(job_id) or {}
+            state = status.get("JobStatus", "unknown")
+            percentage = status.get("CompletionPercentage", "unknown")
+            print(f"  {job_id}: {state} ({percentage}%)")
+
+    unsuccessful = []
+    for job_id in job_ids:
+        status = project.GetRenderJobStatus(job_id) or {}
+        state = status.get("JobStatus", "unknown")
+        if state not in {"Complete", "Completed"}:
+            unsuccessful.append({"job_id": job_id, "status": status})
+
+    if unsuccessful:
+        print(f"ERROR: {len(unsuccessful)} render job(s) did not report completion:")
+        for result in unsuccessful:
+            print(f"  {result}")
+        return False
+
+    print("All requested renders completed.")
     return True
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", type=Path, help="Render destination. Prompts when omitted.")
+    parser.add_argument("--yes", action="store_true", help="Queue and render the planned timelines without prompts.")
+    parser.add_argument("--dry-run", action="store_true", help="Print the plan without queueing or rendering.")
+    args = parser.parse_args()
+
     resolve = get_resolve()
     pm = resolve.GetProjectManager()
     project = pm.GetCurrentProject()
@@ -207,26 +216,33 @@ def main():
     for timeline, preset, width, height in plan:
         print(f"  - {timeline.GetName()} ({width}x{height}) -> {preset}")
 
-    default_dir = os.path.expanduser("~/Movies/DevRel_Renders")
-    output_dir = input(
-        f"\nOutput directory [default: {default_dir}]: "
-    ).strip() or default_dir
-    os.makedirs(output_dir, exist_ok=True)
+    if args.dry_run:
+        print("\nDry run complete. No render jobs were queued.")
+        return
 
-    if not confirm(f"\nProceed to queue {len(plan)} jobs and render now?"):
+    default_dir = Path.home() / ("Movies" if sys.platform == "darwin" else "Videos") / "Resolve_Renders"
+    output_dir = args.output_dir
+    if output_dir is None:
+        output_text = input(f"\nOutput directory [default: {default_dir}]: ").strip()
+        output_dir = Path(output_text).expanduser() if output_text else default_dir
+    output_dir = output_dir.expanduser().resolve()
+
+    if not args.yes and not confirm(f"\nProceed to queue {len(plan)} jobs?"):
         print("Cancelled. No jobs queued.")
         return
 
+    output_dir.mkdir(parents=True, exist_ok=True)
     queued = queue_render_jobs(project, plan, output_dir)
     if not queued:
         print("\nNo jobs queued successfully. Exiting.")
-        return
+        raise SystemExit(1)
 
-    if not confirm(f"\n{len(queued)} jobs queued. Start rendering?"):
+    if not args.yes and not confirm(f"\n{len(queued)} jobs queued. Start rendering?"):
         print("Jobs are queued in Resolve. You can render them manually from the Deliver page.")
         return
 
-    render_all_and_wait(project)
+    if not render_all_and_wait(project, queued):
+        raise SystemExit(2)
     print(f"\nOutput files should be in: {output_dir}")
 
 

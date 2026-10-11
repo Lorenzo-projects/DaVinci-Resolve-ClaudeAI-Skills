@@ -7,7 +7,7 @@ description: Use when a user is installing DaVinci Resolve for the first time, s
 
 ## Overview
 
-One-time configuration for DaVinci Resolve 20 so it does not bite you later. Three things matter: the install source, the media drive, and the backup settings. Everything else can be configured per-project.
+One-time configuration for DaVinci Resolve 21 so it does not bite you later. Three things matter: the install source, the media drive, and the backup settings. Everything else can be configured per-project.
 
 ## When to use
 
